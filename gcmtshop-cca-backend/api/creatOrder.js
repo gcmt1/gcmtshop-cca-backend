@@ -12,16 +12,18 @@ export default function handler(req, res) {
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   // Handle preflight (OPTIONS) request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end(); // Respond with OK for preflight
+    res.status(200).end();
+    return;
   }
 
   // Reject non-POST methods
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -39,7 +41,8 @@ export default function handler(req, res) {
 
     // Check for missing fields
     if (!merchant_id || !order_id || !amount || !currency || !redirect_url || !cancel_url || !language || !working_key) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      res.status(400).json({ error: 'Missing required fields' });
+      return;
     }
 
     // Prepare data string as per CCAvenue format
@@ -55,10 +58,9 @@ export default function handler(req, res) {
       padding: CryptoJS.pad.Pkcs7,
     }).ciphertext.toString(CryptoJS.enc.Hex);
 
-    // Return the encrypted request
-    return res.status(200).json({ encRequest: encrypted });
+    res.status(200).json({ encRequest: encrypted });
   } catch (error) {
     console.error('Encryption error:', error);
-    return res.status(500).json({ error: 'Encryption failed' });
+    res.status(500).json({ error: 'Encryption failed' });
   }
 }
