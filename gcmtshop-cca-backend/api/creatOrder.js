@@ -31,8 +31,10 @@ export default function handler(req, res) {
       redirect_url,
       cancel_url,
       language,
-      working_key,
     } = req.body;
+
+    // Fetch the working key securely from environment variables
+    const working_key = process.env.WORKING_KEY;
 
     if (!merchant_id || !order_id || !amount || !currency || !redirect_url || !cancel_url || !language || !working_key) {
       return res.status(400).json({ error: 'Missing required fields' });
