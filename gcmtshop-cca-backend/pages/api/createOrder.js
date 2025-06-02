@@ -1,30 +1,43 @@
 // api/createOrder.js
 import CryptoJS from 'crypto-js';
 
-export default function handler(req, res) {
-  // Define allowed origins for CORS
-  const allowedOrigins = ['https://gcmtshop.com', 'http://localhost:3000'];
-  const origin = req.headers.origin;
+// /api/createOrder.js
 
-  // Set CORS headers
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+export default function handler(req, res) {
+  // Allow any origin for now (or restrict to specific domains)
+  res.setHeader('Access-Control-Allow-Origin', 'https://gcmtshop.com');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Handle preflight (OPTIONS) request
+  // Handle preflight request
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
-  // Reject non-POST methods
+  // Only accept POST
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  try {
+    // Your encryption logic here
+    const { merchant_id, order_id, amount, currency, redirect_url, cancel_url, language } = req.body;
+    const working_key = process.env.WORKING_KEY;
+
+    if (!merchant_id || !order_id || !amount || !currency || !redirect_url || !cancel_url || !language || !working_key) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Encryption logic...
+    // Return response
+    return res.status(200).json({ encRequest: 'your-encrypted-value' });
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(500).json({ error: 'Encryption failed' });
+  }
+}
+
 
   try {
     const {
