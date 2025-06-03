@@ -1,9 +1,8 @@
-// pages/api/createOrder.js
 import Cors from 'cors';
 import initMiddleware from '../../lib/init-middleware.js';
 import CryptoJS from 'crypto-js';
 
-// Initialize CORS middleware
+// Initialize CORS middleware (not used alone anymore, just for fallback)
 const cors = initMiddleware(
   Cors({
     methods: ['POST', 'GET', 'OPTIONS'],
@@ -13,14 +12,18 @@ const cors = initMiddleware(
 );
 
 export default async function handler(req, res) {
-  // Run CORS middleware first
-  await cors(req, res);
+  // Always set CORS headers explicitly
+  res.setHeader('Access-Control-Allow-Origin', 'https://gcmtshop.com');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  // Handle preflight request
+  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
+  // Handle POST requests
   if (req.method === 'POST') {
     try {
       const {
@@ -35,7 +38,6 @@ export default async function handler(req, res) {
 
       const working_key = process.env.WORKING_KEY;
 
-      // Validate required fields
       if (
         !merchant_id ||
         !order_id ||
@@ -49,10 +51,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      // Prepare data string in CCAvenue format
       const data = `merchant_id=${merchant_id}&order_id=${order_id}&amount=${amount}&currency=${currency}&redirect_url=${redirect_url}&cancel_url=${cancel_url}&language=${language}`;
 
-      // Encrypt using AES-128-CBC
       const key = CryptoJS.enc.Utf8.parse(working_key);
       const iv = CryptoJS.enc.Utf8.parse('0123456789abcdef');
 
@@ -67,7 +67,8 @@ export default async function handler(req, res) {
       console.error('Encryption error:', error);
       return res.status(500).json({ error: 'Encryption failed' });
     }
-  } else {
-    return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Any other methods
+  return res.status(405).json({ error: 'Method not allowed' });
 }
