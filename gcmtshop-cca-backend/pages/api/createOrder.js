@@ -1,24 +1,22 @@
 // pages/api/createOrder.js
-import Cors from 'cors';
-import initMiddleware from '../../lib/init-middleware.js';
 import CryptoJS from 'crypto-js';
 
-// Initialize CORS middleware
-const cors = initMiddleware(
-  Cors({
-    methods: ['POST', 'GET', 'OPTIONS'],
-    origin: ['https://gcmtshop.com', 'http://localhost:3000'],
-    credentials: true,
-  })
-);
+const allowedOrigins = ['https://gcmtshop.com', 'http://localhost:3000'];
 
 export default async function handler(req, res) {
-  // Run CORS middleware first
-  await cors(req, res);
+  const origin = req.headers.origin;
 
-  // Handle preflight request
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // 🔥 Important: Handle preflight (CORS) OPTIONS request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(200).end(); // No body needed
   }
 
   if (req.method === 'POST') {
@@ -35,7 +33,6 @@ export default async function handler(req, res) {
 
       const working_key = process.env.WORKING_KEY;
 
-      // Validate required fields
       if (
         !merchant_id ||
         !order_id ||
@@ -49,10 +46,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      // Prepare data string in CCAvenue format
       const data = `merchant_id=${merchant_id}&order_id=${order_id}&amount=${amount}&currency=${currency}&redirect_url=${redirect_url}&cancel_url=${cancel_url}&language=${language}`;
 
-      // Encrypt using AES-128-CBC
       const key = CryptoJS.enc.Utf8.parse(working_key);
       const iv = CryptoJS.enc.Utf8.parse('0123456789abcdef');
 
