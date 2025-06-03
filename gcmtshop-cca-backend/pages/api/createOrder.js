@@ -1,25 +1,30 @@
-// api/createOrder.js
+export const config = {
+  runtime: 'edge', // 🔁 Tells Vercel this is an edge function
+};
+
 import CryptoJS from 'crypto-js';
 
-export default async function handler(req, res) {
-  const allowedOrigins = ['https://gcmtshop.com', 'http://localhost:3000']; // Add dev origin if needed
-  const origin = req.headers.origin;
+export default async function handler(req) {
+  const allowedOrigins = ['https://gcmtshop.com'];
 
-  // Set CORS headers for every request
+  const origin = req.headers.get('origin');
+  const headers = new Headers();
+
   if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    headers.set('Access-Control-Allow-Origin', origin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  headers.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  headers.set('Access-Control-Allow-Credentials', 'true');
 
-  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end(); // Important: Return early for OPTIONS
+    return new Response(null, { status: 200, headers });
   }
 
   if (req.method === 'POST') {
     try {
+      const body = await req.json();
+
       const {
         merchant_id,
         order_id,
@@ -28,19 +33,18 @@ export default async function handler(req, res) {
         redirect_url,
         cancel_url,
         language,
-      } = req.body;
+      } = body;
 
       const working_key = process.env.WORKING_KEY;
-
-      // Validate required fields
       if (!merchant_id || !order_id || !amount || !currency || !redirect_url || !cancel_url || !language || !working_key) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return new Response(JSON.stringify({ error: 'Missing fields' }), {
+          status: 400,
+          headers,
+        });
       }
 
-      // Prepare data string in CCAvenue format
       const data = `merchant_id=${merchant_id}&order_id=${order_id}&amount=${amount}&currency=${currency}&redirect_url=${redirect_url}&cancel_url=${cancel_url}&language=${language}`;
 
-      // Encrypt using AES-128-CBC
       const key = CryptoJS.enc.Utf8.parse(working_key);
       const iv = CryptoJS.enc.Utf8.parse('0123456789abcdef');
 
@@ -50,12 +54,20 @@ export default async function handler(req, res) {
         padding: CryptoJS.pad.Pkcs7,
       }).ciphertext.toString(CryptoJS.enc.Hex);
 
-      return res.status(200).json({ encRequest: encrypted });
-    } catch (error) {
-      console.error('Encryption error:', error);
-      return res.status(500).json({ error: 'Encryption failed' });
+      return new Response(JSON.stringify({ encRequest: encrypted }), {
+        status: 200,
+        headers,
+      });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: 'Encryption failed' }), {
+        status: 500,
+        headers,
+      });
     }
-  } else {
-    return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+    status: 405,
+    headers,
+  });
 }
