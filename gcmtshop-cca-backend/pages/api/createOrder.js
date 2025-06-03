@@ -2,17 +2,22 @@
 import CryptoJS from 'crypto-js';
 
 export default async function handler(req, res) {
-  // Allow only gcmtshop.com for production
-  res.setHeader('Access-Control-Allow-Origin', 'https://gcmtshop.com');
+  const allowedOrigins = ['https://gcmtshop.com', 'http://localhost:3000']; // Add dev origin if needed
+  const origin = req.headers.origin;
+
+  // Set CORS headers for every request
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(200).end(); // Important: Return early for OPTIONS
   }
 
-  // Handle POST request
   if (req.method === 'POST') {
     try {
       const {
@@ -51,7 +56,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Encryption failed' });
     }
   } else {
-    // Method not allowed for other methods
     return res.status(405).json({ error: 'Method not allowed' });
   }
 }
