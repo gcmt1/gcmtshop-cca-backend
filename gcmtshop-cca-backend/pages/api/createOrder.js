@@ -1,14 +1,13 @@
 // api/createOrder.js
 import CryptoJS from 'crypto-js';
 
-export default function handler(req, res) {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', 'https://gcmtshop.com');  // Replace with your frontend domain
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req, res) {
+  // Allow only gcmtshop.com for production
+  res.setHeader('Access-Control-Allow-Origin', 'https://gcmtshop.com');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle preflight OPTIONS request
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
