@@ -46,7 +46,7 @@ export default async function handler(req, res) {
         delivery_tel,
       } = req.body;
 
-      const working_key = process.env.WORKING_KEY;
+      const working_key = '5CB292A1C96CD4A0A02166FCF209D84D';
 
       if (
         !merchant_id || !order_id || !amount || !currency ||
