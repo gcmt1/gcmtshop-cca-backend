@@ -89,7 +89,7 @@ export default async function handler(req, res) {
       const data = dataFields.join('&');
 
       const key = CryptoJS.enc.Utf8.parse(working_key);
-      const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000'); // 16-byte IV of zeroes
+      const iv = CryptoJS.enc.Utf8.parse(String.fromCharCode(0).repeat(16));
 
       const encrypted = CryptoJS.AES.encrypt(data, key, {
         iv: iv,
