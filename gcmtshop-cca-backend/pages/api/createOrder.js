@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       const key = CryptoJS.enc.Hex.parse(md5Hash.toString());
 
       // ✅ IV = 16 zero bytes (UTF-8)
-      const iv = CryptoJS.enc.Utf8.parse('\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00');
+      const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000');
 
       // ✅ AES encryption with proper padding
       const encrypted = CryptoJS.AES.encrypt(data, key, {
