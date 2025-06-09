@@ -1,9 +1,8 @@
 // File: pages/api/createOrder.js
 import Cors from 'cors';
 import initMiddleware from '../../lib/init-middleware.js';
-import { encrypt } from '../../lib/ccavenueEncrypt.js'; // ✅ Using official encryption helper
+import { encrypt } from '../../lib/ccavenueEncrypt.js';
 
-// Initialize CORS middleware
 const cors = initMiddleware(
   Cors({
     methods: ['POST', 'OPTIONS'],
@@ -22,8 +21,10 @@ export default async function handler(req, res) {
   }
 
   try {
+    const merchant_id = process.env.MERCHANT_ID; // ✅ FROM .env ONLY
+    const working_key = process.env.WORKING_KEY;
+
     const {
-      merchant_id,
       order_id,
       amount,
       currency,
@@ -47,8 +48,7 @@ export default async function handler(req, res) {
       delivery_tel,
     } = req.body;
 
-    const working_key = process.env.WORKING_KEY;
-
+    // ✅ Validate all required fields
     if (
       !merchant_id || !order_id || !amount || !currency ||
       !redirect_url || !cancel_url || !language || !working_key
@@ -56,13 +56,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Build plain string to be encrypted
     const dataFields = [
       `merchant_id=${merchant_id}`,
       `order_id=${order_id}`,
       `amount=${amount}`,
       `currency=${currency}`,
-      `redirect_url=${redirect_url}`,   // Do NOT encode!
+      `redirect_url=${redirect_url}`,
       `cancel_url=${cancel_url}`,
       `language=${language}`,
     ];
@@ -86,8 +85,7 @@ export default async function handler(req, res) {
 
     const data = dataFields.join('&');
 
-    // ✅ Encrypt using helper from ccavenueEncrypt.js
-    const encryptedHex = encrypt(data, working_key); // this is already hex
+    const encryptedHex = encrypt(data, working_key); // uses helper
 
     if (!encryptedHex || encryptedHex.length < 32) {
       throw new Error('Encrypted output is invalid or too short.');
