@@ -1,8 +1,8 @@
-// File: pages/api/createOrder.js
 import Cors from 'cors';
 import initMiddleware from '../../lib/init-middleware.js';
 import { encrypt } from '../../lib/ccavenueEncrypt.js';
 
+// ✅ CORS setup
 const cors = initMiddleware(
   Cors({
     methods: ['POST', 'OPTIONS'],
@@ -13,19 +13,18 @@ const cors = initMiddleware(
 
 export default async function handler(req, res) {
   await cors(req, res);
-  
+
   if (req.method === 'OPTIONS') return res.status(200).end();
-  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // ✅ Get credentials from environment variables ONLY
+    // ✅ Get all secure credentials from environment
     const merchant_id = process.env.MERCHANT_ID;
     const working_key = process.env.WORKING_KEY;
-    const access_code = process.env.ACCESS_CODE; // ✅ ADD THIS
-    
+    const access_code = process.env.ACCESS_CODE;
+
     const {
       order_id,
       amount,
@@ -51,23 +50,16 @@ export default async function handler(req, res) {
       merchant_param1,
     } = req.body;
 
-    // ✅ Validate all required fields including credentials
+    // ✅ Validate required fields
     if (
       !merchant_id || !working_key || !access_code ||
       !order_id || !amount || !currency ||
       !redirect_url || !cancel_url || !language
     ) {
-      console.error('❌ Missing required fields:', {
-        hasMerchantId: !!merchant_id,
-        hasWorkingKey: !!working_key,
-        hasAccessCode: !!access_code,
-        hasOrderId: !!order_id,
-        hasAmount: !!amount,
-      });
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // ✅ Build the data string in the exact order CCAvenue expects
+    // ✅ Construct data string for encryption
     const dataFields = [
       `merchant_id=${merchant_id}`,
       `order_id=${order_id}`,
@@ -78,7 +70,7 @@ export default async function handler(req, res) {
       `language=${language}`,
     ];
 
-    // Add optional fields
+    // Optional fields
     if (billing_name) dataFields.push(`billing_name=${billing_name}`);
     if (billing_address) dataFields.push(`billing_address=${billing_address}`);
     if (billing_city) dataFields.push(`billing_city=${billing_city}`);
@@ -97,31 +89,27 @@ export default async function handler(req, res) {
     if (merchant_param1) dataFields.push(`merchant_param1=${merchant_param1}`);
 
     const data = dataFields.join('&');
-    
-    console.log('🔐 Data to encrypt:', data.substring(0, 100) + '...');
-    console.log('🔑 Working key length:', working_key.length);
 
+    // ✅ Encrypt data
     const encryptedHex = encrypt(data, working_key);
-
     if (!encryptedHex || encryptedHex.length < 32) {
-      throw new Error('Encrypted output is invalid or too short.');
+      throw new Error('Encrypted data is invalid or too short.');
     }
 
-    console.log('✅ Encryption successful, length:', encryptedHex.length);
-
+    // ✅ Return encrypted data + access code to frontend
     return res.status(200).json({
       encRequest: encryptedHex,
-      accessCode: access_code, // ✅ RETURN ACCESS CODE
+      accessCode: access_code,
       debug: {
-        originalDataLength: data.length,
+        merchantId: merchant_id,
+        orderId: order_id,
         encryptedLength: encryptedHex.length,
         timestamp: new Date().toISOString(),
-        merchantId: merchant_id, // For debugging
       }
     });
 
   } catch (error) {
-    console.error('💥 Error in /api/createOrder:', error);
+    console.error('💥 Encryption error:', error);
     return res.status(500).json({
       error: 'Encryption failed',
       details: error.message,
