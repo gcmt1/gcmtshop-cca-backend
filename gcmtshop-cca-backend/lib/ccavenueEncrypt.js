@@ -2,10 +2,9 @@
 import CryptoJS from 'crypto-js';
 
 export function encrypt(data, workingKey) {
-  // Create MD5 hash of the working key
-  const md5Hash = CryptoJS.MD5(workingKey).toString();
+  const md5Hash = CryptoJS.MD5(workingKey).toString(); // MD5 of key
   const key = CryptoJS.enc.Hex.parse(md5Hash);
-  const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000');
+  const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000'); // IV = 16 zeros
 
   const encrypted = CryptoJS.AES.encrypt(data, key, {
     iv,
@@ -13,5 +12,6 @@ export function encrypt(data, workingKey) {
     padding: CryptoJS.pad.Pkcs7
   });
 
-  return encrypted.ciphertext.toString(CryptoJS.enc.Hex); // HEX format
+  // ✅ Return as Base64 string — NOT hex
+  return encrypted.toString(); // ← this gives the correct format
 }
