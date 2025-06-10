@@ -1,6 +1,6 @@
 import Cors from 'cors';
 import initMiddleware from '../../lib/init-middleware.js';
-import { encrypt } from '../../lib/ccavenueEncrypt.js';
+import { encrypt } from '../../lib/ccavenueEncrypt.js'; // ✅ returns Base64 now
 
 // ✅ CORS setup
 const cors = initMiddleware(
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ✅ Get all secure credentials from environment
+    // ✅ Secure values from environment
     const merchant_id = process.env.MERCHANT_ID;
     const working_key = process.env.WORKING_KEY;
     const access_code = process.env.ACCESS_CODE;
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // ✅ Construct data string for encryption
+    // ✅ Assemble data string in required format
     const dataFields = [
       `merchant_id=${merchant_id}`,
       `order_id=${order_id}`,
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
       `language=${language}`,
     ];
 
-    // Optional fields
+    // Optional values
     if (billing_name) dataFields.push(`billing_name=${billing_name}`);
     if (billing_address) dataFields.push(`billing_address=${billing_address}`);
     if (billing_city) dataFields.push(`billing_city=${billing_city}`);
@@ -90,20 +90,21 @@ export default async function handler(req, res) {
 
     const data = dataFields.join('&');
 
-    // ✅ Encrypt data
-    const encryptedHex = encrypt(data, working_key);
-    if (!encryptedHex || encryptedHex.length < 32) {
-      throw new Error('Encrypted data is invalid or too short.');
+    // ✅ Encrypt using updated helper — now returns Base64
+    const encryptedBase64 = encrypt(data, working_key);
+
+    if (!encryptedBase64 || encryptedBase64.length < 64) {
+      throw new Error('Encrypted request is invalid or too short.');
     }
 
-    // ✅ Return encrypted data + access code to frontend
+    // ✅ Return to frontend
     return res.status(200).json({
-      encRequest: encryptedHex,
+      encRequest: encryptedBase64,
       accessCode: access_code,
       debug: {
         merchantId: merchant_id,
         orderId: order_id,
-        encryptedLength: encryptedHex.length,
+        encryptedLength: encryptedBase64.length,
         timestamp: new Date().toISOString(),
       }
     });
