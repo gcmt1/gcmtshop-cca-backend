@@ -1,20 +1,17 @@
-// lib/ccavenueEncrypt.js
 import CryptoJS from 'crypto-js';
 
 export function encrypt(data, workingKey) {
-  // AES key = MD5 of working key
-  const md5Hash = CryptoJS.MD5(workingKey).toString();
-  const key = CryptoJS.enc.Hex.parse(md5Hash);
-
-  // IV: 16 zero bytes parsed as hex
-  const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000');
-
+  // Generate key directly as WordArray
+  const key = CryptoJS.MD5(workingKey);
+  
+  // Correct IV per CCAvenue docs: 000102030405060708090a0b0c0d0e0f
+  const iv = CryptoJS.enc.Hex.parse('000102030405060708090a0b0c0d0e0f');
+  
   const encrypted = CryptoJS.AES.encrypt(data, key, {
     iv,
     mode: CryptoJS.mode.CBC,
-    padding: CryptoJS.pad.Pkcs7,
+    padding: CryptoJS.pad.Pkcs7
   });
-
-  // Return Base64-encoded string
-  return encrypted.toString();
+  
+  return encrypted.ciphertext.toString(CryptoJS.enc.Hex);
 }
