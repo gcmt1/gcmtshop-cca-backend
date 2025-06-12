@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     const params = Object.fromEntries(new URLSearchParams(decryptedStr));
     console.log('Parsed parameters:', params);
 
-    const { order_id, order_status, tracking_id } = params;
+    const { order_id, order_status } = params;
 
     if (!order_id) {
       console.error('Missing order_id in decrypted response');
@@ -73,9 +73,7 @@ export default async function handler(req, res) {
         .from('orders')
         .update({
           payment_status: 'success',
-          order_status: 'confirmed',
-          tracking_id: tracking_id || null,
-          updated_at: new Date().toISOString()
+          order_status: 'confirmed'
         })
         .eq('payment_id', order_id)
         .select(); // Add select to see what was updated
@@ -112,8 +110,7 @@ export default async function handler(req, res) {
         .from('orders')
         .update({
           payment_status: 'failed',
-          order_status: 'cancelled',
-          updated_at: new Date().toISOString()
+          order_status: 'cancelled'
         })
         .eq('payment_id', order_id);
 
