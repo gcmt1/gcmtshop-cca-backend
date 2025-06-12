@@ -33,9 +33,9 @@ export default async function handler(req, res) {
       if (error) throw error;
     }
 
-    return res.redirect('/payment-success'); // Show success page to user
+    return res.redirect('https://gcmtshop.com/#/payment-success');
   } catch (error) {
     console.error(error);
-    return res.redirect('/payment-failure'); // If anything fails
+    return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
 }
