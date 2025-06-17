@@ -58,50 +58,25 @@ export default async function handler(req, res) {
     const params = Object.fromEntries(new URLSearchParams(decryptedStr));
     console.log('Parsed parameters:', params);
 
-    const { order_id, order_status, merchant_param1 } = params;
+    const { order_id, order_status } = params;
 
     if (!order_id) {
       console.error('Missing order_id in decrypted response');
       return res.status(400).json({ error: 'Missing order_id in response' });
     }
 
-    // Check for successful payment - CCAvenue can return different success statuses
-    const isSuccessful = order_status === 'Success' || 
-                        order_status === 'success' || 
-                        order_status === 'Successful';
-
-    console.log('Payment status check:', { order_status, isSuccessful });
-
     // Update order if successful
-    if (isSuccessful) {
+    if (order_status === 'success') {
       console.log('Payment successful, updating database for order:', order_id);
       
-      // First try with payment_id
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .update({
           payment_status: 'success',
           order_status: 'confirmed'
         })
         .eq('payment_id', order_id)
-        .select();
-
-      // If no rows updated and we have merchant_param1, try with order ID
-      if (!error && data && data.length === 0 && merchant_param1) {
-        console.log('No rows updated with payment_id, trying with merchant_param1:', merchant_param1);
-        
-        const result = await supabase
-          .from('orders')
-          .update({
-            payment_status: 'success',
-            order_status: 'confirmed'
-          })
-          .eq('id', merchant_param1)
-          .select();
-        
-        data = result.data;
-        error = result.error;
-      }
+        .select(); // Add select to see what was updated
 
       if (error) {
         console.error('Supabase update error:', error);
@@ -130,25 +105,14 @@ export default async function handler(req, res) {
     } else {
       console.log('Payment failed or cancelled:', order_status);
       
-      // Update order status to failed - try both methods
-      let updateResult = await supabase
+      // Update order status to failed
+      await supabase
         .from('orders')
         .update({
           payment_status: 'failed',
           order_status: 'cancelled'
         })
         .eq('payment_id', order_id);
-
-      // If no rows updated and we have merchant_param1, try with order ID
-      if (!updateResult.error && updateResult.data && updateResult.data.length === 0 && merchant_param1) {
-        await supabase
-          .from('orders')
-          .update({
-            payment_status: 'failed',
-            order_status: 'cancelled'
-          })
-          .eq('id', merchant_param1);
-      }
 
       // For testing purposes, return JSON response
       if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
