@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     }
 
     // Update order if successful
-    if (order_status === 'Success') {
+    if (order_status === 'success') {
       console.log('Payment successful, updating database for order:', order_id);
       
       const { data, error } = await supabase
