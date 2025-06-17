@@ -81,7 +81,7 @@ export default async function handler(req, res) {
       }
 
       // Redirect to FRONTEND success page
-      return res.redirect(`https://gcmtshop.com/payment-success?order_id=${orderId}`);
+      return res.redirect(`https://gcmtshop.com/#/payment-success`);
     } 
     // Handle failed/canceled payment
     else {
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
       }
 
       // Redirect to FRONTEND cancel page
-      return res.redirect(`https://gcmtshop.com/payment-cancel?order_id=${order_id}`);
+      return res.redirect(`https://gcmtshop.com/#/payment-cancel`);
     }
   } catch (err) {
     console.error('Payment processing error:', err);
@@ -121,6 +121,6 @@ export default async function handler(req, res) {
     }
 
     // Redirect to cancel page on error
-    return res.redirect('https://gcmtshop.com/payment-cancel');
+    return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
 }
