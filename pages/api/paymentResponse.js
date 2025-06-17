@@ -11,123 +11,131 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('[PAYMENT] Received callback from CCAvenue');
+    console.log('Request method:', req.method);
+    console.log('Request body:', req.body);
+    console.log('Request query:', req.query);
 
     // Handle both JSON and form-encoded data
-    let encResp = req.body.encResp || req.query.encResp;
-
-    if (!encResp) {
-      console.error('[PAYMENT] Missing encResp parameter');
-      return res.status(400).send('Missing encResp parameter');
+    let encResp;
+    
+    if (req.method === 'POST') {
+      // For form-encoded data (typical CCAvenue response)
+      encResp = req.body.encResp;
+    } else if (req.method === 'GET') {
+      // Some CCAvenue integrations use GET with query parameters
+      encResp = req.query.encResp;
     }
 
-    // Add detailed logging
-    console.log(`[PAYMENT] encResp received (${encResp.length} chars):`, 
-                encResp.substring(0, 100) + (encResp.length > 100 ? '...' : ''));
+    if (!encResp) {
+      console.error('Missing encResp in request');
+      return res.status(400).json({ error: 'Missing encResp parameter' });
+    }
+
+    console.log('Encrypted response received:', encResp.substring(0, 50) + '...');
 
     // Decrypt function
     const decrypt = (cipherText) => {
       try {
         const key = crypto.createHash('md5').update(WORKING_KEY).digest();
         const iv = Buffer.alloc(16, 0);
+
         const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
         decipher.setAutoPadding(true);
+
         let decrypted = decipher.update(cipherText, 'base64', 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
       } catch (decryptError) {
-        console.error('[PAYMENT] Decryption error:', decryptError);
+        console.error('Decryption error:', decryptError);
         throw new Error('Failed to decrypt response');
       }
     };
 
     const decryptedStr = decrypt(encResp);
-    console.log('[PAYMENT] Decrypted response:', decryptedStr);
+    console.log('Decrypted string:', decryptedStr);
 
     // Parse the decrypted parameters
     const params = Object.fromEntries(new URLSearchParams(decryptedStr));
-    console.log('[PAYMENT] Parsed parameters:', params);
+    console.log('Parsed parameters:', params);
 
-    const { order_id, order_status, merchant_param1, merchant_param2 } = params;
+    const { order_id, order_status } = params;
 
-    // FIX 1: Case-insensitive status check
-    const isSuccess = order_status?.toLowerCase() === 'success';
+    if (!order_id) {
+      console.error('Missing order_id in decrypted response');
+      return res.status(400).json({ error: 'Missing order_id in response' });
+    }
 
-    // FIX 2: Add user identification
-    const userId = merchant_param2 || 'guest';
-    console.log(`[PAYMENT] Updating order for user: ${userId}`);
+    // Update order if successful
+    if (order_status === 'Success') {
+      console.log('Payment successful, updating database for order:', order_id);
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .update({
+          payment_status: 'success',
+          order_status: 'confirmed'
+        })
+        .eq('payment_id', order_id)
+        .select(); // Add select to see what was updated
 
-    // Update order status
-    const updateData = {
-      payment_status: isSuccess ? 'success' : 'failed',
-      order_status: isSuccess ? 'confirmed' : 'cancelled',
-    };
+      if (error) {
+        console.error('Supabase update error:', error);
+        return res.status(500).json({ error: 'Database update failed', details: error });
+      }
 
-    console.log(`[PAYMENT] Updating order ${order_id} with:`, updateData);
+      console.log('Database update result:', data);
 
-    // FIX 3: More robust update query
-    const { data, error } = await supabase
-      .from('orders')
-      .update(updateData)
-      .match({ 
-        payment_id: order_id,
-        user_id: userId === 'guest' ? null : userId
-      })
-      .select();
+      if (data && data.length === 0) {
+        console.warn('No rows were updated. Check if order_id exists in database:', order_id);
+        return res.status(404).json({ error: 'Order not found', order_id });
+      }
 
-    if (error) {
-      console.error('[PAYMENT] Supabase update error:', error);
+      // For testing purposes, return JSON response
+      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Payment processed successfully',
+          order_id,
+          updated_rows: data?.length || 0
+        });
+      }
+
+      // For actual CCAvenue redirect
+      return res.redirect('https://gcmtshop.com/#/payment-success');
+    } else {
+      console.log('Payment failed or cancelled:', order_status);
+      
+      // Update order status to failed
+      await supabase
+        .from('orders')
+        .update({
+          payment_status: 'failed',
+          order_status: 'cancelled'
+        })
+        .eq('payment_id', order_id);
+
+      // For testing purposes, return JSON response
+      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
+        return res.status(200).json({ 
+          success: false, 
+          message: 'Payment failed or cancelled',
+          order_id,
+          order_status
+        });
+      }
+
+      return res.redirect('https://gcmtshop.com/#/payment-cancel');
+    }
+  } catch (err) {
+    console.error('paymentResponse handler error:', err);
+    
+    // For testing purposes, return JSON error
+    if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
       return res.status(500).json({ 
-        error: 'Database update failed', 
-        details: error.message 
+        error: 'Internal server error', 
+        message: err.message 
       });
     }
-
-    // FIX 4: Handle missing orders
-    if (!data || data.length === 0) {
-      console.warn('[PAYMENT] No orders updated. Creating fallback record...');
-      // Create fallback record for debugging
-      await supabase.from('payment_errors').insert({
-        payment_id: order_id,
-        raw_data: JSON.stringify(params),
-        error: 'ORDER_NOT_FOUND'
-      });
-    }
-
-    // Handle redirects
-if (isSuccess) {
-  console.log('[PAYMENT] Payment successful, updating database for order:', order_id);
-  
-  // FIX: Properly handle NULL for guest users
-  const updatePayload = {
-    payment_status: 'success',
-    order_status: 'confirmed',
-    updated_at: new Date().toISOString()
-  };
-
-  // Build the query conditionally
-  let query = supabase
-    .from('orders')
-    .update(updatePayload)
-    .eq('payment_id', order_id);
-
-  // For guest users
-  if (userId === 'guest') {
-    query = query.is('user_id', null);  // Use .is() for NULL comparison
-  } 
-  // For logged-in users
-  else {
-    query = query.eq('user_id', userId);
-  }
-
-  const { data, error } = await query.select();
-  
-    // Save error to database for debugging
-    await supabase.from('payment_errors').insert({
-      error_type: 'SERVER_ERROR',
-      error_message: err.message,
-      raw_data: JSON.stringify(req.body || req.query)
-    });
 
     return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
