@@ -61,7 +61,6 @@ export default async function handler(req, res) {
     const updateData = {
       payment_status: isSuccess ? 'success' : 'failed',
       order_status: isSuccess ? 'confirmed' : 'cancelled',
-      updated_at: new Date().toISOString()
     };
 
     console.log(`[PAYMENT] Updating order ${order_id} with:`, updateData);
