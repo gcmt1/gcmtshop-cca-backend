@@ -1,18 +1,13 @@
 // pages/api/paymentResponse.js
-import { Buffer } from 'buffer';
-import { parse as parseQs } from 'querystring';
-import crypto from 'crypto';
-import supabase from '../../lib/supabase';
 
-const WORKING_KEY = process.env.CCA_WORKING_KEY!;
+const { Buffer } = require('buffer');
+const { parse: parseQs } = require('querystring');
+const crypto = require('crypto');
+const supabase = require('../../lib/supabase');
 
-export const config = {
-  api: {
-    bodyParser: false,   // 🔥 disable Next.js JSON parser
-  },
-};
+const WORKING_KEY = process.env.CCA_WORKING_KEY;
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   console.log(`⏳ [paymentResponse] got ${req.method}`);
 
   if (req.method !== 'POST') {
@@ -20,7 +15,7 @@ export default async function handler(req, res) {
     return res.status(405).end('Method Not Allowed');
   }
 
-  // 1) read raw body
+  // 1) Read raw body
   const chunks = [];
   for await (const chunk of req) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
@@ -28,20 +23,20 @@ export default async function handler(req, res) {
   const rawBody = Buffer.concat(chunks).toString('utf8');
   console.log('[paymentResponse] rawBody:', rawBody);
 
-  // 2) parse application/x-www-form-urlencoded
+  // 2) Parse form‑encoded data
   const parsed = parseQs(rawBody);
-  const encResp = parsed.encResp as string;
+  const encResp = parsed.encResp;
   if (!encResp) {
     console.error('[paymentResponse] missing encResp');
     return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
-  console.log('[paymentResponse] encResp (first 80 chars):', encResp.slice(0, 80));
+  console.log('[paymentResponse] encResp (first 80 chars):', encResp.slice(0,80));
 
-  // 3) decrypt
-  let decrypted: string;
+  // 3) Decrypt
+  let decrypted;
   try {
     const key = crypto.createHash('md5').update(WORKING_KEY).digest();
-    // match CCAvenue IV: "000102030405060708090a0b0c0d0e0f"
+    // IV must match CCAvenue’s docs
     const iv = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
     const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
     decipher.setAutoPadding(true);
@@ -52,10 +47,10 @@ export default async function handler(req, res) {
     return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
 
-  // 4) parse querystring from decrypted
+  // 4) Parse decrypted params
   const params = Object.fromEntries(new URLSearchParams(decrypted));
-  const order_id = params.order_id as string;
-  const order_status = (params.order_status as string || '').toLowerCase();
+  const order_id = params.order_id;
+  const order_status = (params.order_status || '').toLowerCase();
   console.log('[paymentResponse] parsed params:', params);
 
   if (!order_id) {
@@ -63,7 +58,7 @@ export default async function handler(req, res) {
     return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
 
-  // 5) update Supabase
+  // 5) Update Supabase and redirect
   try {
     if (order_status === 'success') {
       const { data, error } = await supabase
@@ -74,7 +69,7 @@ export default async function handler(req, res) {
       if (error) throw error;
       console.log('[paymentResponse] DB updated, rows:', data?.length);
       if (!data?.length) {
-        console.warn('[paymentResponse] no matching order for', order_id);
+        console.warn('[paymentResponse] no matching order:', order_id);
         return res.redirect('https://gcmtshop.com/#/payment-cancel');
       }
       return res.redirect('https://gcmtshop.com/#/payment-success');
@@ -90,4 +85,12 @@ export default async function handler(req, res) {
     console.error('[paymentResponse] Supabase error:', dbErr);
     return res.redirect('https://gcmtshop.com/#/payment-cancel');
   }
-}
+};
+
+// Disable Next.js built‑in JSON parser so we can read raw form data
+module.exports.config = {
+  api: {
+    bodyParser: false,
+    externalResolver: true,
+  },
+};
