@@ -1,47 +1,28 @@
-// pages/api/paymentResponse.js
 import crypto from 'crypto';
 import supabase from '../../lib/supabase';
 
 const WORKING_KEY = process.env.CCA_WORKING_KEY;
 
 export default async function handler(req, res) {
-  // Allow both POST and GET methods (CCAvenue might use either)
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
-    console.log('Request method:', req.method);
-    console.log('Request body:', req.body);
-    console.log('Request query:', req.query);
-
-    // Handle both JSON and form-encoded data
-    let encResp;
-    
-    if (req.method === 'POST') {
-      // For form-encoded data (typical CCAvenue response)
-      encResp = req.body.encResp;
-    } else if (req.method === 'GET') {
-      // Some CCAvenue integrations use GET with query parameters
-      encResp = req.query.encResp;
-    }
+    // Get encResp from request
+    let encResp = req.method === 'POST' ? req.body.encResp : req.query.encResp;
 
     if (!encResp) {
-      console.error('Missing encResp in request');
+      console.error('Missing encResp parameter');
       return res.status(400).json({ error: 'Missing encResp parameter' });
     }
-
-    console.log('Encrypted response received:', encResp.substring(0, 50) + '...');
 
     // Decrypt function
     const decrypt = (cipherText) => {
       try {
         const key = crypto.createHash('md5').update(WORKING_KEY).digest();
         const iv = Buffer.alloc(16, 0);
-
         const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
-        decipher.setAutoPadding(true);
-
         let decrypted = decipher.update(cipherText, 'base64', 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
@@ -52,22 +33,21 @@ export default async function handler(req, res) {
     };
 
     const decryptedStr = decrypt(encResp);
-    console.log('Decrypted string:', decryptedStr);
-
-    // Parse the decrypted parameters
     const params = Object.fromEntries(new URLSearchParams(decryptedStr));
-    console.log('Parsed parameters:', params);
-
-    const { order_id, order_status } = params;
+    
+    console.log('Received CCAvenue Parameters:', params);
+    
+    const { order_id, order_status, merchant_param1 } = params;
+    const normalizedStatus = order_status?.toLowerCase()?.trim();
 
     if (!order_id) {
-      console.error('Missing order_id in decrypted response');
+      console.error('Missing order_id in response');
       return res.status(400).json({ error: 'Missing order_id in response' });
     }
 
-    // Update order if successful
-    if (order_status === 'success') {
-      console.log('Payment successful, updating database for order:', order_id);
+    // Handle successful payment
+    if (normalizedStatus === 'success') {
+      console.log('Payment successful for order:', order_id);
       
       const { data, error } = await supabase
         .from('orders')
@@ -75,37 +55,38 @@ export default async function handler(req, res) {
           payment_status: 'success',
           order_status: 'confirmed'
         })
-        .eq('payment_id', order_id)
-        .select(); // Add select to see what was updated
+        .eq('payment_id', order_id);
 
       if (error) {
         console.error('Supabase update error:', error);
-        return res.status(500).json({ error: 'Database update failed', details: error });
-      }
-
-      console.log('Database update result:', data);
-
-      if (data && data.length === 0) {
-        console.warn('No rows were updated. Check if order_id exists in database:', order_id);
-        return res.status(404).json({ error: 'Order not found', order_id });
-      }
-
-      // For testing purposes, return JSON response
-      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
-        return res.status(200).json({ 
-          success: true, 
-          message: 'Payment processed successfully',
-          order_id,
-          updated_rows: data?.length || 0
+        return res.status(500).json({ 
+          error: 'Database update failed', 
+          details: error.message 
         });
       }
 
-      // For actual CCAvenue redirect
-      return res.redirect('https://gcmtshop.com/#/payment-success');
-    } else {
-      console.log('Payment failed or cancelled:', order_status);
+      console.log('Database updated successfully for order:', order_id);
       
-      // Update order status to failed
+      // Get order_id from merchant_param1 for redirect
+      const orderId = merchant_param1 || order_id;
+      
+      // Handle API clients like Postman
+      if (req.headers['user-agent']?.includes('Postman') || 
+          req.headers['content-type']?.includes('application/json')) {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Payment processed successfully',
+          order_id: orderId
+        });
+      }
+
+      // Redirect to FRONTEND success page
+      return res.redirect(`https://gcmtshop.com/payment-success?order_id=${orderId}`);
+    } 
+    // Handle failed/canceled payment
+    else {
+      console.log('Payment failed for order:', order_id);
+      
       await supabase
         .from('orders')
         .update({
@@ -114,38 +95,32 @@ export default async function handler(req, res) {
         })
         .eq('payment_id', order_id);
 
-      // For testing purposes, return JSON response
-      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
+      // API client response
+      if (req.headers['user-agent']?.includes('Postman') || 
+          req.headers['content-type']?.includes('application/json')) {
         return res.status(200).json({ 
           success: false, 
           message: 'Payment failed or cancelled',
-          order_id,
-          order_status
+          order_id
         });
       }
 
-      return res.redirect('https://gcmtshop.com/#/payment-cancel');
+      // Redirect to FRONTEND cancel page
+      return res.redirect(`https://gcmtshop.com/payment-cancel?order_id=${order_id}`);
     }
   } catch (err) {
-    console.error('paymentResponse handler error:', err);
+    console.error('Payment processing error:', err);
     
-    // For testing purposes, return JSON error
-    if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
+    // API client response
+    if (req.headers['user-agent']?.includes('Postman') || 
+        req.headers['content-type']?.includes('application/json')) {
       return res.status(500).json({ 
         error: 'Internal server error', 
         message: err.message 
       });
     }
 
-    return res.redirect('https://gcmtshop.com/#/payment-cancel');
+    // Redirect to cancel page on error
+    return res.redirect('https://gcmtshop.com/payment-cancel');
   }
-}
-
-// Important: Configure body parsing for form data
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '1mb',
-    },
-  },
 }
