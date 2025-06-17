@@ -95,17 +95,33 @@ export default async function handler(req, res) {
     }
 
     // Handle redirects
-    if (isSuccess) {
-      console.log('[PAYMENT] Payment successful, redirecting to success page');
-      return res.redirect('https://gcmtshop.com/#/payment-success');
-    } else {
-      console.log('[PAYMENT] Payment failed, redirecting to cancel page');
-      return res.redirect('https://gcmtshop.com/#/payment-cancel');
-    }
+if (isSuccess) {
+  console.log('[PAYMENT] Payment successful, updating database for order:', order_id);
+  
+  // FIX: Properly handle NULL for guest users
+  const updatePayload = {
+    payment_status: 'success',
+    order_status: 'confirmed',
+    updated_at: new Date().toISOString()
+  };
 
-  } catch (err) {
-    console.error('[PAYMENT] Handler error:', err);
-    
+  // Build the query conditionally
+  let query = supabase
+    .from('orders')
+    .update(updatePayload)
+    .eq('payment_id', order_id);
+
+  // For guest users
+  if (userId === 'guest') {
+    query = query.is('user_id', null);  // Use .is() for NULL comparison
+  } 
+  // For logged-in users
+  else {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query.select();
+  
     // Save error to database for debugging
     await supabase.from('payment_errors').insert({
       error_type: 'SERVER_ERROR',
