@@ -32,25 +32,34 @@ export default async function handler(req, res) {
     // ✅ NEW DECRYPT FUNCTION
 const decryptCCAvenueResponse = (cipherText, workingKey) => {
   try {
-    // IMPORTANT: EncResp is BASE64
+    // Decode the encrypted response
+    const encrypted = Buffer.from(decodeURIComponent(cipherText), 'base64');
+
+    // Check working key length
+    let algorithm;
+    if (workingKey.length === 16) {
+      algorithm = 'aes-128-cbc';
+    } else if (workingKey.length === 32) {
+      algorithm = 'aes-256-cbc';
+    } else {
+      throw new Error(`Invalid working key length: ${workingKey.length}`);
+    }
+
     const key = Buffer.from(workingKey, 'utf8');
     const iv = Buffer.from(workingKey.substr(0, 16), 'utf8');
 
-    // Decode the BASE64
-    const encrypted = Buffer.from(decodeURIComponent(cipherText), 'base64');
-
-    const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
     decipher.setAutoPadding(true);
 
     let decrypted = decipher.update(encrypted, undefined, 'utf8');
     decrypted += decipher.final('utf8');
+
     return decrypted;
   } catch (error) {
     console.error('Decryption error:', error);
     throw new Error('Failed to decrypt response');
   }
 };
-
     // ✅ END DECRYPT FUNCTION
 
     const decryptedStr = decryptCCAvenueResponse(encResp, WORKING_KEY);
