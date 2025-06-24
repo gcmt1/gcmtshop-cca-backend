@@ -1,42 +1,14 @@
-// /api/decryptResponse.js
+import crypto from 'crypto';
 
-import CryptoJS from 'crypto-js';
+function decryptCCAvenueResponse(encResp, workingKey) {
+  const key = Buffer.from(workingKey, 'utf8');
+  const iv = Buffer.from(workingKey.substr(0, 16), 'utf8'); // FIRST 16 CHARS AS IV
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
+  const encrypted = Buffer.from(encResp, 'hex');
+  const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+  decipher.setAutoPadding(true);
 
-  try {
-    const { encResp } = req.body;
-    const workingKey = process.env.CCAVENUE_WORKING_KEY; // Keep this in Vercel env variables
-
-    // Generate key and IV as per CCAvenue's instructions
-    const key = CryptoJS.MD5(workingKey);
-    const iv = CryptoJS.enc.Hex.parse('000102030405060708090a0b0c0d0e0f');
-
-    const decrypted = CryptoJS.AES.decrypt(
-      {
-        ciphertext: CryptoJS.enc.Hex.parse(encResp)
-      },
-      key,
-      {
-        iv,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      }
-    ).toString(CryptoJS.enc.Utf8);
-
-    // Parse key=value&key=value string to JSON
-    const result = {};
-    decrypted.split('&').forEach((pair) => {
-      const [k, v] = pair.split('=');
-      result[k] = decodeURIComponent(v || '');
-    });
-
-    return res.status(200).json(result);
-  } catch (err) {
-    console.error("Decryption error:", err);
-    return res.status(500).json({ error: "Failed to decrypt CCAvenue response." });
-  }
+  let decrypted = decipher.update(encrypted, undefined, 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }
