@@ -5,7 +5,6 @@ import supabase from '../../lib/supabase';
 const WORKING_KEY = process.env.CCA_WORKING_KEY;
 
 export default async function handler(req, res) {
-  // Allow both POST and GET methods (CCAvenue might use either)
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -15,14 +14,11 @@ export default async function handler(req, res) {
     console.log('Request body:', req.body);
     console.log('Request query:', req.query);
 
-    // Handle both JSON and form-encoded data
+    // Get the encrypted response
     let encResp;
-    
     if (req.method === 'POST') {
-      // For form-encoded data (typical CCAvenue response)
       encResp = req.body.encResp;
     } else if (req.method === 'GET') {
-      // Some CCAvenue integrations use GET with query parameters
       encResp = req.query.encResp;
     }
 
@@ -33,16 +29,17 @@ export default async function handler(req, res) {
 
     console.log('Encrypted response received:', encResp.substring(0, 50) + '...');
 
-    // Decrypt function
-    const decrypt = (cipherText) => {
+    // ✅ NEW DECRYPT FUNCTION
+    const decryptCCAvenueResponse = (cipherText, workingKey) => {
       try {
-        const key = crypto.createHash('md5').update(WORKING_KEY).digest();
-        const iv = Buffer.alloc(16, 0);
+        const key = Buffer.from(workingKey, 'utf8');
+        const iv = Buffer.from(workingKey.substr(0, 16), 'utf8');
 
+        const encrypted = Buffer.from(cipherText, 'hex');
         const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
         decipher.setAutoPadding(true);
 
-        let decrypted = decipher.update(cipherText, 'base64', 'utf8');
+        let decrypted = decipher.update(encrypted, undefined, 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
       } catch (decryptError) {
@@ -50,12 +47,17 @@ export default async function handler(req, res) {
         throw new Error('Failed to decrypt response');
       }
     };
+    // ✅ END DECRYPT FUNCTION
 
-    const decryptedStr = decrypt(encResp);
+    const decryptedStr = decryptCCAvenueResponse(encResp, WORKING_KEY);
     console.log('Decrypted string:', decryptedStr);
 
     // Parse the decrypted parameters
-    const params = Object.fromEntries(new URLSearchParams(decryptedStr));
+    const params = {};
+    decryptedStr.split('&').forEach(pair => {
+      const [k, v] = pair.split('=');
+      params[k] = v;
+    });
     console.log('Parsed parameters:', params);
 
     const { order_id, order_status } = params;
@@ -65,10 +67,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing order_id in response' });
     }
 
-    // Update order if successful
-    if (order_status === 'success') {
+    // ✅ Order Status Handling
+    if (order_status === 'Success') {
       console.log('Payment successful, updating database for order:', order_id);
-      
+
       const { data, error } = await supabase
         .from('orders')
         .update({
@@ -76,36 +78,35 @@ export default async function handler(req, res) {
           order_status: 'confirmed'
         })
         .eq('payment_id', order_id)
-        .select(); // Add select to see what was updated
+        .select();
 
       if (error) {
         console.error('Supabase update error:', error);
         return res.status(500).json({ error: 'Database update failed', details: error });
       }
 
-      console.log('Database update result:', data);
-
       if (data && data.length === 0) {
-        console.warn('No rows were updated. Check if order_id exists in database:', order_id);
+        console.warn('No rows updated. Check if order_id exists in database:', order_id);
         return res.status(404).json({ error: 'Order not found', order_id });
       }
 
-      // For testing purposes, return JSON response
-      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
-        return res.status(200).json({ 
-          success: true, 
+      // JSON for testing
+      if (
+        req.headers['user-agent']?.includes('Postman') ||
+        req.headers['content-type']?.includes('application/json')
+      ) {
+        return res.status(200).json({
+          success: true,
           message: 'Payment processed successfully',
           order_id,
           updated_rows: data?.length || 0
         });
       }
 
-      // For actual CCAvenue redirect
       return res.redirect('https://gcmtshop.com/#/payment-success');
     } else {
-      console.log('Payment failed or cancelled:', order_status);
-      
-      // Update order status to failed
+      console.log('Payment failed or cancelled for order:', order_id);
+
       await supabase
         .from('orders')
         .update({
@@ -114,10 +115,12 @@ export default async function handler(req, res) {
         })
         .eq('payment_id', order_id);
 
-      // For testing purposes, return JSON response
-      if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
-        return res.status(200).json({ 
-          success: false, 
+      if (
+        req.headers['user-agent']?.includes('Postman') ||
+        req.headers['content-type']?.includes('application/json')
+      ) {
+        return res.status(200).json({
+          success: false,
           message: 'Payment failed or cancelled',
           order_id,
           order_status
@@ -128,12 +131,14 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error('paymentResponse handler error:', err);
-    
-    // For testing purposes, return JSON error
-    if (req.headers['user-agent']?.includes('Postman') || req.headers['content-type']?.includes('application/json')) {
-      return res.status(500).json({ 
-        error: 'Internal server error', 
-        message: err.message 
+
+    if (
+      req.headers['user-agent']?.includes('Postman') ||
+      req.headers['content-type']?.includes('application/json')
+    ) {
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: err.message
       });
     }
 
@@ -148,4 +153,4 @@ export const config = {
       sizeLimit: '1mb',
     },
   },
-}
+};
