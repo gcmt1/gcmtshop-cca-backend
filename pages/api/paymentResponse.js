@@ -30,25 +30,19 @@ export default async function handler(req, res) {
     console.log('Encrypted response received:', encResp.substring(0, 50) + '...');
 
     // ✅ NEW DECRYPT FUNCTION
-const decryptCCAvenueResponse = (cipherText, workingKey) => {
+const decryptCCAvenueResponse = (encResp, workingKey) => {
   try {
-    // Decode the encrypted response
-    const encrypted = Buffer.from(decodeURIComponent(cipherText), 'base64');
+    // 1️⃣ Get MD5 hash of the working key
+    const key = crypto.createHash('md5').update(workingKey).digest();
 
-    // Check working key length
-    let algorithm;
-    if (workingKey.length === 16) {
-      algorithm = 'aes-128-cbc';
-    } else if (workingKey.length === 32) {
-      algorithm = 'aes-256-cbc';
-    } else {
-      throw new Error(`Invalid working key length: ${workingKey.length}`);
-    }
+    // 2️⃣ Fixed IV for CCAvenue
+    const iv = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
 
-    const key = Buffer.from(workingKey, 'utf8');
-    const iv = Buffer.from(workingKey.substr(0, 16), 'utf8');
+    // 3️⃣ Convert encResp (hex) ➔ Buffer
+    const encrypted = Buffer.from(encResp, 'hex');
 
-    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    // 4️⃣ Decrypt
+    const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
     decipher.setAutoPadding(true);
 
     let decrypted = decipher.update(encrypted, undefined, 'utf8');
@@ -60,18 +54,19 @@ const decryptCCAvenueResponse = (cipherText, workingKey) => {
     throw new Error('Failed to decrypt response');
   }
 };
+
     // ✅ END DECRYPT FUNCTION
 
     const decryptedStr = decryptCCAvenueResponse(encResp, WORKING_KEY);
-    console.log('Decrypted string:', decryptedStr);
+console.log('Decrypted string:', decryptedStr);
 
-    // Parse the decrypted parameters
-    const params = {};
-    decryptedStr.split('&').forEach(pair => {
-      const [k, v] = pair.split('=');
-      params[k] = v;
-    });
-    console.log('Parsed parameters:', params);
+// ✅ Parse as URLSearchParams
+const params = {};
+decryptedStr.split('&').forEach(pair => {
+  const [k, v] = pair.split('=');
+  params[k] = v;
+});
+
 
     const { order_id, order_status } = params;
 
