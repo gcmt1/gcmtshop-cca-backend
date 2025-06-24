@@ -1,21 +1,23 @@
-// api/ccadecrypt.js
 import crypto from 'crypto';
 
 export function decryptCCAvenueResponse(encResp, workingKey) {
-  const key = Buffer.from(workingKey, 'utf8');
-  const iv  = Buffer.from(workingKey.slice(0, 16), 'utf8');
+  // workingKey is the plain working key (32 chars).
+  const key = crypto.createHash('md5').update(workingKey).digest();
+  const iv = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
 
-  // CCAvenue's response is URL-encoded; decode then Base64
-  const encrypted = Buffer.from(decodeURIComponent(encResp), 'base64');
+  // CCAvenue sends encResp as HEX
+  const encrypted = Buffer.from(encResp, 'hex');
 
   const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+  decipher.setAutoPadding(true);
   let decrypted = decipher.update(encrypted, undefined, 'utf8');
   decrypted += decipher.final('utf8');
 
-  // CCAvenue returns a URL-encoded query string: "order_id=ORD123&status=Success…"
-  const params = new URLSearchParams(decrypted);
-  const result = {};
-  for (const [k,v] of params.entries()) result[k] = v;
-
-  return result;
+  // Parse result
+  const params = {};
+  decrypted.split('&').forEach(pair => {
+    const [k, v] = pair.split('=');
+    params[k] = v;
+  });
+  return params;
 }
