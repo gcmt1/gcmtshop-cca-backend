@@ -30,23 +30,27 @@ export default async function handler(req, res) {
     console.log('Encrypted response received:', encResp.substring(0, 50) + '...');
 
     // ✅ NEW DECRYPT FUNCTION
-    const decryptCCAvenueResponse = (cipherText, workingKey) => {
-      try {
-        const key = Buffer.from(workingKey, 'utf8');
-        const iv = Buffer.from(workingKey.substr(0, 16), 'utf8');
+const decryptCCAvenueResponse = (cipherText, workingKey) => {
+  try {
+    // IMPORTANT: EncResp is BASE64
+    const key = Buffer.from(workingKey, 'utf8');
+    const iv = Buffer.from(workingKey.substr(0, 16), 'utf8');
 
-        const encrypted = Buffer.from(cipherText, 'hex');
-        const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
-        decipher.setAutoPadding(true);
+    // Decode the BASE64
+    const encrypted = Buffer.from(decodeURIComponent(cipherText), 'base64');
 
-        let decrypted = decipher.update(encrypted, undefined, 'utf8');
-        decrypted += decipher.final('utf8');
-        return decrypted;
-      } catch (decryptError) {
-        console.error('Decryption error:', decryptError);
-        throw new Error('Failed to decrypt response');
-      }
-    };
+    const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+    decipher.setAutoPadding(true);
+
+    let decrypted = decipher.update(encrypted, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    throw new Error('Failed to decrypt response');
+  }
+};
+
     // ✅ END DECRYPT FUNCTION
 
     const decryptedStr = decryptCCAvenueResponse(encResp, WORKING_KEY);
