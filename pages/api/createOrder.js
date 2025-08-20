@@ -1,89 +1,67 @@
+import Cors from 'cors';
+import initMiddleware from '../../lib/init-middleware';
 import { encrypt } from '../../lib/ccavenueEncrypt';
+
+const cors = initMiddleware(
+  Cors({
+    methods: ['POST', 'OPTIONS', 'GET'],
+    origin: [
+      'https://gcmtshop.com',
+      'https://www.gcmtshop.com',  // Added www subdomain
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://gcmtshop-frontend.vercel.app' // Add any other frontend domains you use
+    ],
+    credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'X-Requested-With',
+      'Origin'
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 200
+  })
+);
 
 // Helper to safely encode values
 const safeEncode = (value) => 
   value ? encodeURIComponent(String(value).trim()) : '';
 
-// Manual CORS handler that works better with Vercel
-const setCorsHeaders = (res, origin) => {
-  const allowedOrigins = [
-    'https://gcmtshop.com',
-    'https://www.gcmtshop.com',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ];
-
-  // Check if the origin is allowed
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    // Fallback for development or if origin is null
-    res.setHeader('Access-Control-Allow-Origin', 'https://www.gcmtshop.com');
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-};
-
 export default async function handler(req, res) {
   try {
-    // Get the origin from the request
-    const origin = req.headers.origin;
-    
-    // Set CORS headers for all requests
-    setCorsHeaders(res, origin);
+    await cors(req, res);
     
     // Handle OPTIONS preflight request
     if (req.method === 'OPTIONS') {
-      console.log('✅ Handling OPTIONS preflight request from:', origin);
       return res.status(200).end();
     }
     
     if (req.method !== 'POST') {
-      console.log('❌ Method not allowed:', req.method);
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    console.log('🚀 Creating CCAvenue order with request from:', origin);
-    console.log('📋 Request body keys:', Object.keys(req.body || {}));
-
-    // Check all possible environment variable names
-    const merchant_id = process.env.MERCHANT_ID || process.env.CCAVENUE_MERCHANT_ID;
-    const working_key = process.env.WORKING_KEY || process.env.CCAVENUE_WORKING_KEY;
-    const access_code = process.env.ACCESS_CODE || process.env.CCAVENUE_ACCESS_CODE;
-    
-    console.log('🔍 Environment variables check:', {
-      MERCHANT_ID: !!process.env.MERCHANT_ID,
-      WORKING_KEY: !!process.env.WORKING_KEY,
-      ACCESS_CODE: !!process.env.ACCESS_CODE,
-      CCAVENUE_MERCHANT_ID: !!process.env.CCAVENUE_MERCHANT_ID,
-      CCAVENUE_WORKING_KEY: !!process.env.CCAVENUE_WORKING_KEY,
-      CCAVENUE_ACCESS_CODE: !!process.env.CCAVENUE_ACCESS_CODE,
-      NODE_ENV: process.env.NODE_ENV,
-      VERCEL_ENV: process.env.VERCEL_ENV
+    console.log('🚀 Creating CCAvenue order with request:', {
+      ...req.body,
+      // Don't log sensitive data
+      billing_email: req.body.billing_email ? '***@***.***' : undefined
     });
+
+    const merchant_id = process.env.MERCHANT_ID;
+    const working_key = process.env.WORKING_KEY;
+    const access_code = process.env.ACCESS_CODE;
     
     // Validate environment variables
     if (!merchant_id || !working_key || !access_code) {
       console.error('❌ Missing environment variables:', {
         merchant_id: !!merchant_id,
         working_key: !!working_key,
-        access_code: !!access_code,
-        availableEnvVars: Object.keys(process.env).filter(key => 
-          key.includes('MERCHANT') || key.includes('WORKING') || key.includes('ACCESS') || key.includes('CCAVENUE')
-        )
+        access_code: !!access_code
       });
       return res.status(500).json({ 
         error: 'Server configuration error',
-        details: 'Missing required environment variables',
-        debug: {
-          merchant_id_found: !!merchant_id,
-          working_key_found: !!working_key,
-          access_code_found: !!access_code,
-          env: process.env.NODE_ENV || process.env.VERCEL_ENV || 'unknown'
-        }
+        details: 'Missing required environment variables'
       });
     }
     
@@ -111,7 +89,7 @@ export default async function handler(req, res) {
       delivery_tel,
       merchant_param1,
       merchant_param2
-    } = req.body || {};
+    } = req.body;
 
     // Validate required fields
     if (!order_id || !amount || !currency || !redirect_url || !cancel_url || !language) {
@@ -132,7 +110,6 @@ export default async function handler(req, res) {
     // Validate amount is a positive number
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      console.error('❌ Invalid amount:', amount);
       return res.status(400).json({ 
         error: 'Invalid amount',
         details: 'Amount must be a positive number'
@@ -175,8 +152,7 @@ export default async function handler(req, res) {
 
     const data = dataFields.join('&');
     
-    console.log('🔐 Data to encrypt (length):', data.length);
-    console.log('🔐 Data sample:', data.substring(0, 100) + '...');
+    console.log('🔐 Data to encrypt (first 100 chars):', data.substring(0, 100) + '...');
     
     // Encrypt the data
     const encryptedBase64 = encrypt(data, working_key);
@@ -209,7 +185,6 @@ export default async function handler(req, res) {
       }
     };
 
-    console.log('📤 Sending response with encRequest length:', encryptedBase64.length);
     return res.status(200).json(response);
     
   } catch (error) {
@@ -218,11 +193,6 @@ export default async function handler(req, res) {
       stack: error.stack,
       timestamp: new Date().toISOString()
     });
-    
-    // Make sure CORS headers are set even for error responses
-    if (!res.headersSent) {
-      setCorsHeaders(res, req.headers.origin);
-    }
     
     return res.status(500).json({
       error: 'Payment processing failed',
@@ -233,11 +203,11 @@ export default async function handler(req, res) {
   }
 }
 
-// Vercel configuration
+// Health check endpoint
 export const config = {
   api: {
     bodyParser: {
       sizeLimit: '1mb',
     },
   },
-};
+}
