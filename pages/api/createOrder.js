@@ -49,20 +49,41 @@ export default async function handler(req, res) {
     console.log('🚀 Creating CCAvenue order with request from:', origin);
     console.log('📋 Request body keys:', Object.keys(req.body || {}));
 
-    const merchant_id = process.env.MERCHANT_ID;
-    const working_key = process.env.WORKING_KEY;
-    const access_code = process.env.ACCESS_CODE;
+    // Check all possible environment variable names
+    const merchant_id = process.env.MERCHANT_ID || process.env.CCAVENUE_MERCHANT_ID;
+    const working_key = process.env.WORKING_KEY || process.env.CCAVENUE_WORKING_KEY;
+    const access_code = process.env.ACCESS_CODE || process.env.CCAVENUE_ACCESS_CODE;
+    
+    console.log('🔍 Environment variables check:', {
+      MERCHANT_ID: !!process.env.MERCHANT_ID,
+      WORKING_KEY: !!process.env.WORKING_KEY,
+      ACCESS_CODE: !!process.env.ACCESS_CODE,
+      CCAVENUE_MERCHANT_ID: !!process.env.CCAVENUE_MERCHANT_ID,
+      CCAVENUE_WORKING_KEY: !!process.env.CCAVENUE_WORKING_KEY,
+      CCAVENUE_ACCESS_CODE: !!process.env.CCAVENUE_ACCESS_CODE,
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV
+    });
     
     // Validate environment variables
     if (!merchant_id || !working_key || !access_code) {
       console.error('❌ Missing environment variables:', {
         merchant_id: !!merchant_id,
         working_key: !!working_key,
-        access_code: !!access_code
+        access_code: !!access_code,
+        availableEnvVars: Object.keys(process.env).filter(key => 
+          key.includes('MERCHANT') || key.includes('WORKING') || key.includes('ACCESS') || key.includes('CCAVENUE')
+        )
       });
       return res.status(500).json({ 
         error: 'Server configuration error',
-        details: 'Missing required environment variables'
+        details: 'Missing required environment variables',
+        debug: {
+          merchant_id_found: !!merchant_id,
+          working_key_found: !!working_key,
+          access_code_found: !!access_code,
+          env: process.env.NODE_ENV || process.env.VERCEL_ENV || 'unknown'
+        }
       });
     }
     
