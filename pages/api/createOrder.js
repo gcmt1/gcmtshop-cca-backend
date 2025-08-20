@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       billing_email: req.body.billing_email ? '***@***.***' : undefined
     });
 
-    const merchant_id = process.env.MERCHANT_ID;
+    const merchant_id = process.env.CCA_MERCHANT_ID;
     const working_key = process.env.WORKING_KEY;
     const access_code = process.env.ACCESS_CODE;
     
