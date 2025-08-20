@@ -4,27 +4,66 @@ import { encrypt } from '../../lib/ccavenueEncrypt';
 
 const cors = initMiddleware(
   Cors({
-    methods: ['POST', 'OPTIONS'],
-    origin: ['https://gcmtshop.com', 'http://localhost:3000'],
+    methods: ['POST', 'OPTIONS', 'GET'],
+    origin: [
+      'https://gcmtshop.com',
+      'https://www.gcmtshop.com',  // Added www subdomain
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://gcmtshop-frontend.vercel.app' // Add any other frontend domains you use
+    ],
     credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'X-Requested-With',
+      'Origin'
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 200
   })
 );
 
 // Helper to safely encode values
 const safeEncode = (value) => 
-  value ? encodeURIComponent(value) : '';
+  value ? encodeURIComponent(String(value).trim()) : '';
 
 export default async function handler(req, res) {
-  await cors(req, res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
   try {
+    await cors(req, res);
+    
+    // Handle OPTIONS preflight request
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    console.log('🚀 Creating CCAvenue order with request:', {
+      ...req.body,
+      // Don't log sensitive data
+      billing_email: req.body.billing_email ? '***@***.***' : undefined
+    });
+
     const merchant_id = process.env.MERCHANT_ID;
     const working_key = process.env.WORKING_KEY;
     const access_code = process.env.ACCESS_CODE;
+    
+    // Validate environment variables
+    if (!merchant_id || !working_key || !access_code) {
+      console.error('❌ Missing environment variables:', {
+        merchant_id: !!merchant_id,
+        working_key: !!working_key,
+        access_code: !!access_code
+      });
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        details: 'Missing required environment variables'
+      });
+    }
     
     const {
       order_id,
@@ -49,13 +88,32 @@ export default async function handler(req, res) {
       delivery_country,
       delivery_tel,
       merchant_param1,
+      merchant_param2
     } = req.body;
 
     // Validate required fields
-    if (!merchant_id || !working_key || !access_code ||
-        !order_id || !amount || !currency ||
-        !redirect_url || !cancel_url || !language) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!order_id || !amount || !currency || !redirect_url || !cancel_url || !language) {
+      console.error('❌ Missing required request fields:', {
+        order_id: !!order_id,
+        amount: !!amount,
+        currency: !!currency,
+        redirect_url: !!redirect_url,
+        cancel_url: !!cancel_url,
+        language: !!language
+      });
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        required: ['order_id', 'amount', 'currency', 'redirect_url', 'cancel_url', 'language']
+      });
+    }
+
+    // Validate amount is a positive number
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ 
+        error: 'Invalid amount',
+        details: 'Amount must be a positive number'
+      });
     }
 
     // Build data string with URL-encoded values
@@ -69,7 +127,7 @@ export default async function handler(req, res) {
       `language=${safeEncode(language)}`,
     ];
 
-    // Add optional fields with safe encoding
+    // Add optional billing fields with safe encoding
     if (billing_name) dataFields.push(`billing_name=${safeEncode(billing_name)}`);
     if (billing_address) dataFields.push(`billing_address=${safeEncode(billing_address)}`);
     if (billing_city) dataFields.push(`billing_city=${safeEncode(billing_city)}`);
@@ -79,6 +137,7 @@ export default async function handler(req, res) {
     if (billing_tel) dataFields.push(`billing_tel=${safeEncode(billing_tel)}`);
     if (billing_email) dataFields.push(`billing_email=${safeEncode(billing_email)}`);
     
+    // Add optional delivery fields
     if (delivery_name) dataFields.push(`delivery_name=${safeEncode(delivery_name)}`);
     if (delivery_address) dataFields.push(`delivery_address=${safeEncode(delivery_address)}`);
     if (delivery_city) dataFields.push(`delivery_city=${safeEncode(delivery_city)}`);
@@ -87,32 +146,68 @@ export default async function handler(req, res) {
     if (delivery_country) dataFields.push(`delivery_country=${safeEncode(delivery_country)}`);
     if (delivery_tel) dataFields.push(`delivery_tel=${safeEncode(delivery_tel)}`);
     
+    // Add merchant parameters
     if (merchant_param1) dataFields.push(`merchant_param1=${safeEncode(merchant_param1)}`);
+    if (merchant_param2) dataFields.push(`merchant_param2=${safeEncode(merchant_param2)}`);
 
     const data = dataFields.join('&');
+    
+    console.log('🔐 Data to encrypt (first 100 chars):', data.substring(0, 100) + '...');
+    
+    // Encrypt the data
     const encryptedBase64 = encrypt(data, working_key);
 
-    if (!encryptedBase64 || encryptedBase64.length < 64) {
-      throw new Error('Encrypted request is invalid or too short');
+    if (!encryptedBase64 || typeof encryptedBase64 !== 'string') {
+      throw new Error('Encryption failed - no result returned');
     }
 
-    return res.status(200).json({
+    if (encryptedBase64.length < 64) {
+      throw new Error(`Encrypted request is too short: ${encryptedBase64.length} characters`);
+    }
+
+    console.log('✅ Encryption successful:', {
+      orderId: order_id,
+      encryptedLength: encryptedBase64.length,
+      dataLength: data.length
+    });
+
+    const response = {
       encRequest: encryptedBase64,
       accessCode: access_code,
       debug: {
         merchantId: merchant_id,
         orderId: order_id,
+        amount: amount,
         encryptedLength: encryptedBase64.length,
+        dataLength: data.length,
         timestamp: new Date().toISOString(),
+        success: true
       }
-    });
+    };
+
+    return res.status(200).json(response);
+    
   } catch (error) {
-    console.error('💥 Encryption error:', error);
-    return res.status(500).json({
-      error: 'Encryption failed',
-      details: error.message,
+    console.error('💥 CCAvenue API error:', {
+      message: error.message,
+      stack: error.stack,
       timestamp: new Date().toISOString()
+    });
+    
+    return res.status(500).json({
+      error: 'Payment processing failed',
+      details: error.message,
+      timestamp: new Date().toISOString(),
+      success: false
     });
   }
 }
-//test
+
+// Health check endpoint
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '1mb',
+    },
+  },
+}
